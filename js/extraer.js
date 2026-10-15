@@ -7,6 +7,10 @@ window.Oficios = window.Oficios || {};
 
   var EMAIL_RE = /[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}/g;
   var DOMINIO_SAE = "@saesas.gov.co";
+  // Correos de la SAE que NO van en copia, aunque aparezcan en el oficio.
+  var CC_QUITAR = ["correspondenciaentrada@saesas.gov.co"];
+  // Correos que SIEMPRE van en copia.
+  var CC_AGREGAR = ["apatino@saesas.gov.co"];
 
   /** Mayúsculas, sin tildes y sin signos: "Bogotá D.C." → "BOGOTA D C" */
   O.normalizar = function (s) {
@@ -84,8 +88,12 @@ window.Oficios = window.Oficios || {};
         .filter(function (c) { return c.indexOf(DOMINIO_SAE) === -1; }).join("; ");
     }
 
-    // CC: todos los correos de la SAE que aparecen en el oficio.
-    r.cc = O.buscarCorreos(r.texto).filter(function (c) { return c.indexOf(DOMINIO_SAE) !== -1; }).join("; ");
+    // CC: los correos de la SAE del oficio (sin los de CC_QUITAR) + los de CC_AGREGAR.
+    var cc = O.buscarCorreos(r.texto).filter(function (c) {
+      return c.indexOf(DOMINIO_SAE) !== -1 && CC_QUITAR.indexOf(c) === -1;
+    });
+    CC_AGREGAR.forEach(function (c) { if (cc.indexOf(c) === -1) cc.push(c); });
+    r.cc = cc.join("; ");
 
     // Asunto: lo que sigue a "ASUNTO:".
     if (asu >= 0) {
@@ -98,9 +106,9 @@ window.Oficios = window.Oficios || {};
     return r;
   };
 
-  /** Asunto final: el del oficio + " - MUNICIPIO". */
-  O.armarAsunto = function (base, municipio) {
-    return base && municipio ? base + " - " + municipio : base;
+  /** Asunto: exactamente el del oficio (sin agregar el municipio). */
+  O.armarAsunto = function (base) {
+    return base;
   };
 
   /**

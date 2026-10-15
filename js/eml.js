@@ -35,7 +35,7 @@ window.Oficios = window.Oficios || {};
   O.documentoHtml = function (cuerpo) {
     return '<!DOCTYPE html><html><head><meta charset="utf-8">' +
       '<meta name="viewport" content="width=device-width, initial-scale=1"></head>' +
-      '<body style="margin:0;background:#ffffff;color:#000000;font-family:\'Arial Narrow\',Arial,sans-serif;font-size:11pt">' +
+      '<body style="margin:0;background:#ffffff;color:#000000;font-family:' + O.FUENTE_CUERPO + ';font-size:11pt">' +
       cuerpo + "</body></html>";
   };
 

@@ -38,6 +38,9 @@ window.Oficios = window.Oficios || {};
     darkBlue: "#000080", darkCyan: "#008080", darkGreen: "#008000", darkMagenta: "#800080", darkRed: "#800000",
     darkYellow: "#808000", darkGray: "#808080", lightGray: "#C0C0C0", black: "#000000", white: "#FFFFFF"
   };
+  // Letra de todo el cuerpo del correo (reemplaza la del Word).
+  O.FUENTE_CUERPO = "'Century Gothic',CenturyGothic,AppleGothic,sans-serif";
+
   var TIPO_IMG = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", bmp: "image/bmp" };
 
   /* ---------- Propiedades de texto y párrafo ---------- */
@@ -139,7 +142,7 @@ window.Oficios = window.Oficios || {};
 
   Conversor.prototype.cssTexto = function (r) {
     var css = [];
-    if (r.fuente) css.push("font-family:'" + r.fuente + "'," + (/narrow/i.test(r.fuente) ? "Arial," : "") + (/times|georgia|garamond|cambria/i.test(r.fuente) ? "serif" : "sans-serif"));
+    if (r.fuente) css.push("font-family:" + O.FUENTE_CUERPO);
     if (r.tam) css.push("font-size:" + r.tam + "pt");
     if (r.b) css.push("font-weight:bold");
     if (r.i) css.push("font-style:italic");

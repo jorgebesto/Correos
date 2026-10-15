@@ -55,7 +55,6 @@
     if (o.problema) return { clase: "err", texto: "No se pudo leer" };
     if (!o.pdfId) return { clase: "warn", texto: "Falta el PDF" };
     if (!o.para.trim()) return { clase: "warn", texto: "Falta correo de la alcaldía" };
-    if (!o.municipio.trim()) return { clase: "warn", texto: "Falta municipio" };
     if (!o.asunto.trim()) return { clase: "warn", texto: "Falta asunto" };
     return { clase: "ok", texto: "Listo" };
   }
@@ -208,11 +207,6 @@
     if (!o || !t.dataset.campo) return;
     o[t.dataset.campo] = t.value;
     if (t.dataset.campo === "asunto") o.asuntoEditado = true;
-    if (t.dataset.campo === "municipio" && !o.asuntoEditado) {
-      o.asunto = O.armarAsunto(o.asuntoBase, t.value.trim().toUpperCase());
-      var a = $("asunto-" + o.id);
-      if (a) a.value = o.asunto;
-    }
     var st = estado(o), pill = document.querySelector('[data-pill="' + o.id + '"]');
     if (pill) { pill.className = "pill " + st.clase; pill.textContent = st.texto; }
     actualizarContador();

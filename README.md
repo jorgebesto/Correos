@@ -5,9 +5,9 @@ Página web que convierte los oficios de Cambio de Subtipo (Word + PDF) en corre
 Por cada oficio arma un correo con:
 
 - **Para:** el correo de la alcaldía (el que aparece debajo de "Señores", antes del ASUNTO).
-- **CC:** los correos de la SAE (@saesas.gov.co) que aparecen en el oficio.
-- **Asunto:** el del oficio + " - MUNICIPIO".
-- **Cuerpo:** copiado del Word con su formato (negrillas, cursiva, tabla, imagen, firma), desde "Bogotá D.C." hasta el nombre y cargo de quien firma.
+- **CC:** los correos de la SAE (@saesas.gov.co) que aparecen en el oficio, sin correspondenciaentrada@saesas.gov.co, y siempre apatino@saesas.gov.co. Se cambian en `js/extraer.js` (`CC_QUITAR` y `CC_AGREGAR`).
+- **Asunto:** exactamente el del oficio.
+- **Cuerpo:** copiado del Word con su formato (negrillas, cursiva, tabla, imagen, firma), desde "Bogotá D.C." hasta el nombre y cargo de quien firma, todo en letra Century Gothic (se cambia en `js/docx-html.js`, `FUENTE_CUERPO`).
 - **Adjunto:** el PDF del oficio.
 
 No se envía a la Oficina de Registro, aunque su correo aparezca en el oficio.
