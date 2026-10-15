@@ -11,23 +11,34 @@
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-  <div class="wrap">
-    <header>
+  <header class="masthead">
+    <div class="masthead-inner">
+      <p class="eyebrow">Envío de oficios · Cambio de Subtipo</p>
       <h1>Oficios a Outlook</h1>
       <p class="lead">Carga el Word y el PDF de cada oficio. La página copia el cuerpo del Word con su formato, desde "Bogotá D.C." hasta la firma, y arma un correo por municipio con el PDF adjunto, listo para abrir en Outlook y darle Enviar.</p>
-    </header>
+      <ol class="steps">
+        <li><b>Carga Word y PDF</b><span>Todos juntos. Se emparejan por el municipio en el nombre del archivo.</span></li>
+        <li><b>Revisa lo pendiente</b><span>Lo que no se pudo relacionar aparece primero para completarlo a mano.</span></li>
+        <li><b>Descarga y envía</b><span>Abre cada correo en Outlook y dale Enviar.</span></li>
+      </ol>
+    </div>
+  </header>
 
-    <ol class="steps">
-      <li><b>Carga Word y PDF</b><span>Todos juntos. Se emparejan por el nombre del municipio en el nombre del archivo.</span></li>
-      <li><b>Revisa lo pendiente</b><span>Lo que no se pudo relacionar aparece primero para que lo completes a mano.</span></li>
-      <li><b>Descarga y envía</b><span>Abre cada correo en Outlook y dale Enviar.</span></li>
-    </ol>
-
+  <main class="wrap">
     <p class="msg err" id="errorCarga" hidden></p>
 
     <label class="drop" id="drop" for="file">
-      <strong>Arrastra aquí los Word y los PDF, o haz clic para elegirlos</strong>
-      <small>.docx para el cuerpo del correo · .pdf para el adjunto — se leen en tu navegador, no se suben a ningún servidor</small>
+      <svg class="drop-icono" viewBox="0 0 72 64" aria-hidden="true">
+        <rect class="doc-b" x="26" y="6" width="38" height="50" rx="4"/>
+        <text class="doc-b-txt" x="55" y="44" text-anchor="middle">PDF</text>
+        <rect class="doc-a" x="8" y="12" width="38" height="46" rx="4"/>
+        <path class="doc-a-lin" d="M15 26h24M15 33h24M15 40h16"/>
+        <text class="doc-a-txt" x="27" y="22" text-anchor="middle">W</text>
+      </svg>
+      <span class="drop-texto">
+        <strong>Arrastra aquí los Word y los PDF</strong>
+        <small>.docx para el cuerpo del correo · .pdf para el adjunto. Se leen en tu navegador, no se suben a ningún servidor.</small>
+      </span>
       <span class="boton-falso">Elegir archivos</span>
     </label>
     <input type="file" id="file" class="oculto" accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple>
@@ -42,7 +53,8 @@
     <p class="msg" id="msg" hidden></p>
 
     <div class="empty" id="vacio">
-      Todavía no hay archivos. Cuando cargues los oficios verás aquí, primero, los que hay que revisar a mano y después los correos listos.
+      <svg viewBox="0 0 48 36" aria-hidden="true"><rect x="3" y="5" width="42" height="28" rx="3"/><path d="M4 7l20 15 20-15"/></svg>
+      <p><b>Todavía no hay oficios cargados.</b><br>Cuando los cargues verás aquí, primero, lo que hay que revisar a mano y después los correos listos para enviar.</p>
     </div>
 
     <section id="seccionManual" class="seccion manual" hidden>
@@ -69,7 +81,7 @@
         <li>Si usas Outlook en el navegador, usa los botones <b>Copiar</b> y <b>Copiar cuerpo con formato</b>, y adjunta el PDF a mano.</li>
       </ol>
     </details>
-  </div>
+  </main>
 
   <!-- Librería para leer el Word y armar el .zip (incluida en el proyecto, no depende de internet) -->
   <script src="vendor/jszip.min.js"></script>
