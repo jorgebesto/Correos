@@ -1,131 +1,151 @@
-/* app.js — Interfaz: carga de archivos, fichas, botones y descargas. */
+/* app.js — Interfaz: carga de Word y PDF, fichas, revisión manual y descargas. */
 (function (O) {
   "use strict";
 
   var $ = function (id) { return document.getElementById(id); };
-  var excluir = $("exclude"), adjuntar = $("attach"), lista = $("list");
-  var oficios = [], contador = 0;
+  var oficios = [], pdfs = [], contador = 0;
 
-  try { excluir.value = localStorage.getItem("oficios-excluir") || ""; } catch (e) {}
-
-  /* ---------- Crear un oficio a partir del texto ---------- */
-  function crearOficio(texto, nombre, bytes, ext) {
-    texto = O.limpiarTexto(texto);
-    var correos = O.buscarCorreos(texto);
-    return {
-      id: ++contador, nombre: nombre, ext: ext, bytes: bytes, texto: texto,
-      correos: correos,
-      para: correos.filter(function (c) { return !O.estaExcluido(c, excluir.value); }).join("; "),
-      paraEditado: false,
-      asunto: O.buscarAsunto(texto),
-      cuerpo: texto,
-      radicado: O.buscarRadicado(texto),
-      error: ""
-    };
-  }
-
-  function oficioConError(archivo, mensaje) {
-    return { id: ++contador, nombre: archivo.name, ext: "", bytes: null, texto: "", correos: [], para: "",
-             paraEditado: false, asunto: "", cuerpo: "", radicado: "", error: mensaje };
-  }
-
-  async function agregarArchivos(archivos) {
-    archivos = [].slice.call(archivos);
+  /* ---------- Carga de archivos ---------- */
+  async function agregarArchivos(lista) {
+    var archivos = [].slice.call(lista);
     if (!archivos.length) return;
-    oficios = oficios.filter(function (o) { return !o.ejemplo; });
+    var ignorados = [], repetidos = [];
     mensaje("Leyendo " + archivos.length + " archivo" + (archivos.length > 1 ? "s" : "") + "…", "ok");
 
     for (var i = 0; i < archivos.length; i++) {
-      try {
-        var r = await O.leerArchivo(archivos[i]);
-        var o = crearOficio(r.texto, archivos[i].name, r.bytes, r.ext);
-        if (!o.texto) {
-          o.error = r.ext === "pdf"
-            ? "Este PDF no tiene texto (parece escaneado). Exporta el oficio desde Word como PDF o súbelo en .docx."
-            : "El archivo está vacío.";
-        }
-        oficios.push(o);
-      } catch (e) {
-        oficios.push(oficioConError(archivos[i], e.message || "No se pudo leer el archivo."));
+      var f = archivos[i], ext = (f.name.split(".").pop() || "").toLowerCase();
+      if (oficios.concat(pdfs).some(function (x) { return x.nombre === f.name; })) { repetidos.push(f.name); continue; }
+
+      if (ext === "pdf") {
+        pdfs.push({ id: ++contador, nombre: f.name, bytes: new Uint8Array(await f.arrayBuffer()), oficioId: null });
+      } else if (ext === "docx") {
+        oficios.push(await leerOficio(f));
+      } else {
+        ignorados.push(f.name);
       }
     }
+
+    O.emparejar(oficios, pdfs);
     pintar();
-    mensaje("");
+
+    var avisos = [];
+    if (ignorados.length) avisos.push("No se cargaron (solo .docx y .pdf): " + ignorados.join(", ") + ".");
+    if (repetidos.length) avisos.push("Ya estaban cargados: " + repetidos.join(", ") + ".");
+    mensaje(avisos.join(" "), "err");
   }
 
-  /* ---------- Estado de cada oficio ---------- */
+  async function leerOficio(f) {
+    var o = { id: ++contador, nombre: f.name, pdfId: null, municipio: O.municipioDeArchivo(f.name),
+              para: "", cc: "", asunto: "", asuntoBase: "", asuntoEditado: false, radicado: "",
+              html: "", imagenes: [], texto: "", problema: "", vistaPrevia: null };
+    try {
+      var docx = await O.leerDocx(await f.arrayBuffer());
+      var r = O.analizarOficio(docx, f.name);
+      Object.assign(o, r);
+      o.asunto = O.armarAsunto(r.asuntoBase, r.municipio);
+    } catch (e) {
+      o.problema = "No se pudo leer el Word" + (e && e.message ? ": " + e.message : ".");
+    }
+    return o;
+  }
+
+  /* ---------- Estado ---------- */
+  function pdfDe(o) { return pdfs.filter(function (p) { return p.id === o.pdfId; })[0] || null; }
   function estado(o) {
-    if (o.error) return { clase: "err", texto: "No se pudo leer" };
-    if (!o.para.trim()) return { clase: "warn", texto: "Falta destinatario" };
+    if (o.problema) return { clase: "err", texto: "No se pudo leer" };
+    if (!o.pdfId) return { clase: "warn", texto: "Falta el PDF" };
+    if (!o.para.trim()) return { clase: "warn", texto: "Falta correo de la alcaldía" };
+    if (!o.municipio.trim()) return { clase: "warn", texto: "Falta municipio" };
     if (!o.asunto.trim()) return { clase: "warn", texto: "Falta asunto" };
     return { clase: "ok", texto: "Listo" };
   }
   function listos() { return oficios.filter(function (o) { return estado(o).clase === "ok"; }); }
   function buscar(id) { id = +id; return oficios.filter(function (o) { return o.id === id; })[0]; }
+  function pdfsSinWord() { return pdfs.filter(function (p) { return !p.oficioId; }); }
 
-  /* ---------- Pintar la lista ---------- */
+  /* ---------- Pintar ---------- */
   function esc(s) {
-    return String(s).replace(/[&<>"]/g, function (c) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
     });
   }
 
-  function fila(o, campo, etiqueta, control) {
+  function campo(o, nombre, etiqueta, valor, copiable, mono) {
     return '<div class="row"><div class="rowhead">' +
-      '<label for="' + campo + "-" + o.id + '">' + etiqueta + "</label>" +
-      '<button type="button" data-act="copiar" data-campo="' + campo + '" data-id="' + o.id + '">Copiar</button>' +
-      "</div>" + control + "</div>";
+      '<label for="' + nombre + "-" + o.id + '">' + etiqueta + "</label>" +
+      (copiable ? '<button type="button" data-act="copiar" data-campo="' + nombre + '" data-id="' + o.id + '">Copiar</button>' : "") +
+      '</div><input type="text"' + (mono ? ' class="mono"' : "") + ' id="' + nombre + "-" + o.id + '" data-campo="' + nombre + '" data-id="' + o.id + '" value="' + esc(valor) + '"></div>';
+  }
+
+  function selectorPdf(o) {
+    var opciones = pdfs.filter(function (p) { return !p.oficioId || p.oficioId === o.id; });
+    return '<div class="row"><div class="rowhead"><label for="pdf-' + o.id + '">PDF que se adjunta</label></div>' +
+      '<select id="pdf-' + o.id + '" data-act="pdf" data-id="' + o.id + '">' +
+      '<option value="">— Sin PDF —</option>' +
+      opciones.map(function (p) {
+        return '<option value="' + p.id + '"' + (p.id === o.pdfId ? " selected" : "") + ">" + esc(p.nombre) + "</option>";
+      }).join("") +
+      "</select></div>";
   }
 
   function ficha(o) {
     var st = estado(o);
-    var etiquetas =
-      (o.ejemplo ? '<span class="pill ex">Ejemplo</span>' : "") +
-      (o.radicado ? '<span class="rad" title="Radicado">' + esc(o.radicado) + "</span>" : "") +
+    var etiquetas = (o.radicado ? '<span class="rad" title="Radicado">' + esc(o.radicado) + "</span>" : "") +
       '<span class="pill ' + st.clase + '" data-pill="' + o.id + '">' + st.texto + "</span>";
-    var cabeza = '<div class="head"><div class="name">' + esc(o.nombre) + '</div><div class="tags">' + etiquetas + "</div></div>";
+    var cabeza = '<div class="head"><div class="titulo"><div class="name">' + esc(o.municipio || "Sin municipio") + "</div>" +
+      '<div class="archivo mono">' + esc(o.nombre) + "</div></div>" +
+      '<div class="tags">' + etiquetas + "</div></div>";
 
-    if (o.error) {
-      return '<article class="card">' + cabeza +
-        '<p class="msg err">' + esc(o.error) + "</p>" +
-        '<div class="foot"><span></span><button type="button" data-act="quitar" data-id="' + o.id + '">Quitar</button></div>' +
-        "</article>";
+    if (o.problema) {
+      return '<article class="card">' + cabeza + '<p class="msg err">' + esc(o.problema) + "</p>" +
+        '<div class="foot"><span></span><div class="btns"><button type="button" data-act="quitar" data-id="' + o.id + '">Quitar</button></div></div></article>';
     }
 
-    var n = o.correos.length;
-    var encontrados = n
-      ? n + " correo" + (n > 1 ? "s" : "") + " encontrado" + (n > 1 ? "s" : "") + " en el oficio"
-      : "No encontré correos en el oficio; escríbelos a mano";
-
-    return '<article class="card' + (o.ejemplo ? " sample" : "") + '">' + cabeza +
-      fila(o, "para", "Para", '<input type="text" class="mono" id="para-' + o.id + '" data-campo="para" data-id="' + o.id + '" value="' + esc(o.para) + '">') +
-      '<p class="note">' + encontrados + ". Separa varios con punto y coma.</p>" +
-      fila(o, "asunto", "Asunto", '<input type="text" id="asunto-' + o.id + '" data-campo="asunto" data-id="' + o.id + '" value="' + esc(o.asunto) + '">') +
-      fila(o, "cuerpo", "Cuerpo del correo (texto completo del oficio)", '<textarea id="cuerpo-' + o.id + '" data-campo="cuerpo" data-id="' + o.id + '">' + esc(o.cuerpo) + "</textarea>") +
-      '<div class="foot"><span class="note">' + (adjuntar.checked ? "Se adjunta " + esc(o.nombre) : "Sin adjunto") + "</span>" +
-      '<div class="btns">' +
-      '<button type="button" data-act="eml" data-id="' + o.id + '">Descargar este correo (.eml)</button>' +
-      '<button type="button" data-act="quitar" data-id="' + o.id + '">Quitar</button>' +
-      "</div></div></article>";
+    return '<article class="card" id="ficha-' + o.id + '">' + cabeza +
+      '<div class="grid2">' + campo(o, "municipio", "Municipio", o.municipio, false, false) + selectorPdf(o) + "</div>" +
+      campo(o, "para", "Para (alcaldía)", o.para, true, true) +
+      campo(o, "cc", "CC (SAE)", o.cc, true, true) +
+      campo(o, "asunto", "Asunto", o.asunto, true, false) +
+      '<details class="cuerpo" data-id="' + o.id + '"><summary>Ver el cuerpo del correo</summary>' +
+      '<div class="cuerpo-acciones"><span class="note">Desde "Bogotá D.C." hasta la firma, con el formato del Word.</span>' +
+      '<button type="button" data-act="copiarCuerpo" data-id="' + o.id + '">Copiar cuerpo con formato</button></div>' +
+      '<div class="marco" id="marco-' + o.id + '"></div></details>' +
+      '<div class="foot"><span class="note">' + (pdfDe(o) ? "Adjunto: " + esc(pdfDe(o).nombre) : "Sin PDF adjunto") + "</span>" +
+      '<div class="btns"><button type="button" data-act="eml" data-id="' + o.id + '">Descargar este correo (.eml)</button>' +
+      '<button type="button" data-act="quitar" data-id="' + o.id + '">Quitar</button></div></div>' +
+      "</article>";
   }
 
   function pintar() {
-    lista.innerHTML = oficios.length
-      ? oficios.map(ficha).join("")
-      : '<div class="empty">Todavía no hay oficios. Cárgalos arriba para ver aquí un correo por cada uno.</div>';
+    var manual = oficios.filter(function (o) { return estado(o).clase !== "ok"; });
+    var ok = listos(), sueltos = pdfsSinWord();
+
+    $("vacio").hidden = !!(oficios.length || pdfs.length);
+    $("seccionManual").hidden = !(manual.length || sueltos.length);
+    $("seccionListos").hidden = !ok.length;
+
+    $("listaManual").innerHTML = manual.map(ficha).join("");
+    $("pdfsSueltos").hidden = !sueltos.length;
+    $("listaPdfs").innerHTML = sueltos.map(function (p) {
+      return '<li><span class="mono">' + esc(p.nombre) + '</span><button type="button" data-act="quitarPdf" data-id="' + p.id + '">Quitar</button></li>';
+    }).join("");
+    $("listaListos").innerHTML = ok.map(ficha).join("");
     actualizarContador();
   }
 
   function actualizarContador() {
-    var n = listos().length, porRevisar = oficios.length - n;
-    var reales = oficios.filter(function (o) { return !o.ejemplo; }).length;
-    $("count").innerHTML = oficios.length
-      ? "<b>" + n + "</b> correo" + (n === 1 ? "" : "s") + " listo" + (n === 1 ? "" : "s") +
-        (porRevisar ? " · <b>" + porRevisar + "</b> por revisar" : "") +
-        (!reales ? ' <span class="note">(ejemplo)</span>' : "")
-      : "Sin oficios cargados";
+    var n = listos().length, m = oficios.length - n, s = pdfsSinWord().length;
+    var partes = [];
+    if (oficios.length || pdfs.length) {
+      partes.push("<b>" + n + "</b> listo" + (n === 1 ? "" : "s"));
+      if (m) partes.push("<b>" + m + "</b> Word por revisar");
+      if (s) partes.push("<b>" + s + "</b> PDF sin Word");
+    }
+    $("count").innerHTML = partes.length ? partes.join(" · ") : "Sin archivos cargados";
     $("btnZip").disabled = !n;
     $("btnCsv").disabled = !oficios.length;
+    $("tituloManual").textContent = "Para revisar a mano (" + (m + s) + ")";
+    $("tituloListos").textContent = "Listos para enviar (" + n + ")";
   }
 
   function mensaje(texto, tipo) {
@@ -135,7 +155,120 @@
     m.className = "msg " + (tipo || "ok");
   }
 
-  /* ---------- Botones de la barra ---------- */
+  /* ---------- Vista previa del cuerpo ---------- */
+  function htmlVista(o) {
+    if (!o.vistaPrevia) o.vistaPrevia = O.htmlConImagenes(o.html, o.imagenes);
+    return o.vistaPrevia;
+  }
+  function mostrarVista(o) {
+    var marco = $("marco-" + o.id);
+    if (!marco || marco.firstChild) return;
+    var ifr = document.createElement("iframe");
+    ifr.title = "Cuerpo del correo de " + (o.municipio || o.nombre);
+    ifr.setAttribute("sandbox", "allow-same-origin");
+    ifr.addEventListener("load", function () {
+      try { ifr.style.height = (ifr.contentDocument.documentElement.scrollHeight + 8) + "px"; } catch (e) {}
+    });
+    ifr.srcdoc = O.documentoHtml('<div style="padding:16px">' + htmlVista(o) + "</div>");
+    marco.appendChild(ifr);
+  }
+
+  /* ---------- Copiar ---------- */
+  function avisoBoton(b, texto) {
+    var original = b.dataset.original || b.textContent;
+    b.dataset.original = original;
+    b.textContent = texto;
+    setTimeout(function () { b.textContent = original; }, 1500);
+  }
+  function copiarTexto(b, input) {
+    var manual = function () { input.select(); avisoBoton(b, "Usa Ctrl+C"); };
+    try { navigator.clipboard.writeText(input.value).then(function () { avisoBoton(b, "Copiado"); }, manual); }
+    catch (e) { manual(); }
+  }
+  function copiarCuerpo(b, o) {
+    var html = O.documentoHtml(htmlVista(o));
+    try {
+      var item = new ClipboardItem({
+        "text/html": new Blob([html], { type: "text/html" }),
+        "text/plain": new Blob([o.texto], { type: "text/plain" })
+      });
+      navigator.clipboard.write([item]).then(function () { avisoBoton(b, "Copiado"); }, function () {
+        mensaje("El navegador no dejó copiar con formato. Descarga el .eml de este oficio.", "err");
+      });
+    } catch (e) {
+      mensaje("Este navegador no permite copiar con formato. Descarga el .eml de este oficio.", "err");
+    }
+  }
+
+  /* ---------- Eventos de las fichas ---------- */
+  function datosEml(o) { return Object.assign({}, o, { pdf: pdfDe(o) }); }
+
+  document.addEventListener("input", function (e) {
+    var t = e.target, o = buscar(t.dataset.id);
+    if (!o || !t.dataset.campo) return;
+    o[t.dataset.campo] = t.value;
+    if (t.dataset.campo === "asunto") o.asuntoEditado = true;
+    if (t.dataset.campo === "municipio" && !o.asuntoEditado) {
+      o.asunto = O.armarAsunto(o.asuntoBase, t.value.trim().toUpperCase());
+      var a = $("asunto-" + o.id);
+      if (a) a.value = o.asunto;
+    }
+    var st = estado(o), pill = document.querySelector('[data-pill="' + o.id + '"]');
+    if (pill) { pill.className = "pill " + st.clase; pill.textContent = st.texto; }
+    actualizarContador();
+  });
+
+  document.addEventListener("change", function (e) {
+    var t = e.target;
+    if (t.dataset.act === "pdf") {
+      var o = buscar(t.dataset.id);
+      pdfs.forEach(function (p) { if (p.oficioId === o.id) p.oficioId = null; });
+      o.pdfId = t.value ? +t.value : null;
+      if (o.pdfId) pdfs.filter(function (p) { return p.id === o.pdfId; })[0].oficioId = o.id;
+      pintar();
+    } else if (t.dataset.campo === "municipio") {
+      var om = buscar(t.dataset.id);
+      om.municipio = t.value.trim().toUpperCase();
+      pintar();
+    } else if (t.dataset.campo === "para") {
+      pintar();
+    }
+  });
+
+  document.addEventListener("toggle", function (e) {
+    var d = e.target;
+    if (d.classList && d.classList.contains("cuerpo") && d.open) mostrarVista(buscar(d.dataset.id));
+  }, true);
+
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest("button[data-act]") : null;
+    if (!b) return;
+    var act = b.dataset.act;
+
+    if (act === "quitarPdf") {
+      pdfs = pdfs.filter(function (p) { return p.id !== +b.dataset.id; });
+      pintar();
+      return;
+    }
+    var o = buscar(b.dataset.id);
+    if (!o) return;
+
+    if (act === "quitar") {
+      pdfs.forEach(function (p) { if (p.oficioId === o.id) p.oficioId = null; });
+      oficios = oficios.filter(function (x) { return x !== o; });
+      pintar();
+    } else if (act === "copiar") {
+      copiarTexto(b, $(b.dataset.campo + "-" + o.id));
+    } else if (act === "copiarCuerpo") {
+      copiarCuerpo(b, o);
+    } else if (act === "eml") {
+      var st = estado(o);
+      if (st.clase !== "ok") { mensaje(o.municipio + ": " + st.texto.toLowerCase() + ". Corrígelo antes de descargar.", "err"); return; }
+      O.descargar(O.nombreEml(o) + ".eml", O.armarEml(datosEml(o)), "message/rfc822");
+    }
+  });
+
+  /* ---------- Barra de acciones ---------- */
   $("btnZip").addEventListener("click", async function () {
     var ok = listos();
     if (!ok.length) return;
@@ -144,65 +277,22 @@
       var base = O.nombreEml(o), nombre = base, k = 2;
       while (usados[nombre]) nombre = base + " (" + (k++) + ")";
       usados[nombre] = true;
-      zip.file(nombre + ".eml", O.armarEml(o, adjuntar.checked));
+      zip.file(nombre + ".eml", O.armarEml(datosEml(o)));
     });
     var blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
     O.descargar("correos-oficios.zip", blob);
-    var omitidos = oficios.length - ok.length;
+    var faltan = oficios.length - ok.length;
     mensaje("Descargado correos-oficios.zip con " + ok.length + " correo" + (ok.length > 1 ? "s" : "") + "." +
-      (omitidos ? " " + omitidos + " oficio" + (omitidos > 1 ? "s" : "") + " por revisar no se incluyeron." : ""), "ok");
+      (faltan ? " " + faltan + " Word por revisar no se incluyeron." : ""), "ok");
   });
 
   $("btnCsv").addEventListener("click", function () {
-    O.descargar("listado-oficios.csv", O.armarCsv(oficios, estado), "text/csv;charset=utf-8");
+    var filas = oficios.map(function (o) {
+      var p = pdfDe(o);
+      return [o.municipio, o.nombre, p ? p.nombre : "", o.para, o.cc, o.asunto, estado(o).texto];
+    }).concat(pdfsSinWord().map(function (p) { return ["", "", p.nombre, "", "", "", "PDF sin Word"]; }));
+    O.descargar("listado-oficios.csv", O.armarCsv(filas), "text/csv;charset=utf-8");
   });
-
-  /* ---------- Edición dentro de las fichas ---------- */
-  lista.addEventListener("input", function (e) {
-    var t = e.target, o = buscar(t.dataset.id);
-    if (!o || !t.dataset.campo) return;
-    o[t.dataset.campo] = t.value;
-    if (t.dataset.campo === "para") o.paraEditado = true;
-    var st = estado(o), pill = document.querySelector('[data-pill="' + o.id + '"]');
-    if (pill) { pill.className = "pill " + st.clase; pill.textContent = st.texto; }
-    actualizarContador();
-  });
-
-  lista.addEventListener("click", function (e) {
-    var b = e.target.closest("button");
-    if (!b) return;
-    var o = buscar(b.dataset.id);
-    if (!o) return;
-
-    if (b.dataset.act === "quitar") {
-      oficios = oficios.filter(function (x) { return x !== o; });
-      pintar();
-    }
-
-    if (b.dataset.act === "eml") {
-      if (estado(o).clase !== "ok") { mensaje("A este oficio le falta " + estado(o).texto.replace("Falta ", "") + ".", "err"); return; }
-      O.descargar(O.nombreEml(o) + ".eml", O.armarEml(o, adjuntar.checked), "message/rfc822");
-    }
-
-    if (b.dataset.act === "copiar") {
-      var campo = $(b.dataset.campo + "-" + o.id);
-      var listo = function () { b.textContent = "Copiado"; setTimeout(function () { b.textContent = "Copiar"; }, 1400); };
-      var manual = function () { campo.select(); b.textContent = "Ctrl+C"; };
-      try { navigator.clipboard.writeText(campo.value).then(listo, manual); } catch (err) { manual(); }
-    }
-  });
-
-  /* ---------- Ajustes ---------- */
-  excluir.addEventListener("input", function () {
-    try { localStorage.setItem("oficios-excluir", excluir.value); } catch (e) {}
-    oficios.forEach(function (o) {
-      if (!o.paraEditado && !o.error) {
-        o.para = o.correos.filter(function (c) { return !O.estaExcluido(c, excluir.value); }).join("; ");
-      }
-    });
-    pintar();
-  });
-  adjuntar.addEventListener("change", pintar);
 
   /* ---------- Zona de carga ---------- */
   var zona = $("drop"), entrada = $("file");
@@ -221,32 +311,5 @@
     if (e.dataTransfer && e.dataTransfer.files) agregarArchivos(e.dataTransfer.files);
   });
 
-  /* ---------- Oficio de ejemplo (se quita al cargar los tuyos) ---------- */
-  var EJEMPLO = [
-    "Bogotá D.C., 9 de octubre de 2026",
-    "Radicado: 20264100242441",
-    "",
-    "Señores",
-    "ALCALDÍA MUNICIPAL DE GINEBRA (VALLE)",
-    "Secretaría de Planeación",
-    "planeacion@municipio-ejemplo.gov.co",
-    "",
-    "ASUNTO: Solicitud - Envío de certificación clasificación del uso del suelo según el POT vigente, para actualización de datos básicos ante la Oficina de Registro de Instrumentos Públicos - GINEBRA",
-    "",
-    "Respetados señores:",
-    "",
-    "De manera atenta solicitamos la expedición de la certificación de clasificación del uso del suelo de los predios relacionados en el anexo, según el Plan de Ordenamiento Territorial vigente, con el fin de adelantar la actualización de datos básicos ante la Oficina de Registro de Instrumentos Públicos, conforme a la Instrucción Administrativa 03 de 2019 y la Resolución 7448 de 2021.",
-    "",
-    "Agradecemos remitir la respuesta a este mismo correo.",
-    "",
-    "Cordialmente,",
-    "",
-    "Nombre del funcionario",
-    "Cargo"
-  ].join("\n");
-
-  var ejemplo = crearOficio(EJEMPLO, "Oficio de ejemplo - Ginebra.txt", new TextEncoder().encode(EJEMPLO), "txt");
-  ejemplo.ejemplo = true;
-  oficios.push(ejemplo);
   pintar();
 })(window.Oficios);

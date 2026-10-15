@@ -1,15 +1,10 @@
-/* eml.js — Arma los correos .eml (listos para Outlook) y el listado .csv. */
+/* eml.js — Arma los correos .eml (listos para Outlook), el listado .csv y las descargas. */
 window.Oficios = window.Oficios || {};
 
 (function (O) {
   "use strict";
 
   var enc = new TextEncoder();
-  var TIPOS = {
-    pdf: "application/pdf",
-    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    txt: "text/plain"
-  };
 
   function base64(bytes) {
     var s = "", TROZO = 0x8000;
@@ -18,11 +13,10 @@ window.Oficios = window.Oficios || {};
     }
     return btoa(s);
   }
-
   function cortar76(s) { return s.replace(/.{1,76}/g, "$&\r\n"); }
 
-  // Codifica el asunto para que tildes y ñ lleguen bien.
-  function codificarEncabezado(str) {
+  // Codifica encabezados con tildes y ñ.
+  function codificar(str) {
     if (/^[\x20-\x7E]*$/.test(str) && str.length < 70) return str;
     var partes = [], actual = "";
     for (var ch of str) {
@@ -32,68 +26,76 @@ window.Oficios = window.Oficios || {};
     if (actual) partes.push(actual);
     return partes.map(function (p) { return "=?UTF-8?B?" + base64(enc.encode(p)) + "?="; }).join("\r\n ");
   }
-
-  function nombreAdjunto(nombre) {
-    return /^[\x20-\x7E]*$/.test(nombre)
-      ? '"' + nombre.replace(/"/g, "") + '"'
-      : '"=?UTF-8?B?' + base64(enc.encode(nombre)) + '?="';
+  function nombreArchivo(n) {
+    return /^[\x20-\x7E]*$/.test(n) ? '"' + n.replace(/"/g, "") + '"' : '"=?UTF-8?B?' + base64(enc.encode(n)) + '?="';
   }
+  function direcciones(s) { return (s || "").split(/[;,\s]+/).filter(Boolean).join(", "); }
+
+  /** Documento HTML completo del cuerpo del correo. */
+  O.documentoHtml = function (cuerpo) {
+    return '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+      '<meta name="viewport" content="width=device-width, initial-scale=1"></head>' +
+      '<body style="margin:0;background:#ffffff;color:#000000;font-family:\'Arial Narrow\',Arial,sans-serif;font-size:11pt">' +
+      cuerpo + "</body></html>";
+  };
 
   /**
-   * Arma el texto de un archivo .eml.
-   * "X-Unsent: 1" hace que Outlook lo abra como correo NUEVO listo para enviar.
+   * Arma el .eml:
+   *  - "X-Unsent: 1" → Outlook lo abre como correo NUEVO listo para enviar.
+   *  - Cuerpo en HTML con las imágenes del oficio incrustadas.
+   *  - El PDF como adjunto.
    */
-  O.armarEml = function (oficio, conAdjunto) {
-    var para = oficio.para.split(/[;,\s]+/).filter(Boolean).join(", ");
-    var limite = "----=_Oficio_" + Date.now().toString(36) + "_" + oficio.id;
-    var cuerpo = oficio.cuerpo.replace(/\r?\n/g, "\r\n");
+  O.armarEml = function (o) {
+    var id = Date.now().toString(36) + "_" + o.id;
+    var mixto = "----=_Mixto_" + id, relacionado = "----=_Rel_" + id;
 
-    var encabezados = [
-      "X-Unsent: 1",
-      "To: " + para,
-      "Subject: " + codificarEncabezado(oficio.asunto.replace(/\s+/g, " ").trim()),
-      "MIME-Version: 1.0"
-    ];
-    var parteTexto =
-      'Content-Type: text/plain; charset="UTF-8"\r\n' +
+    var enc1 = ["X-Unsent: 1", "To: " + direcciones(o.para)];
+    if (direcciones(o.cc)) enc1.push("Cc: " + direcciones(o.cc));
+    enc1.push("Subject: " + codificar(o.asunto.replace(/\s+/g, " ").trim()));
+    enc1.push("MIME-Version: 1.0");
+    enc1.push('Content-Type: multipart/mixed; boundary="' + mixto + '"');
+
+    var partes = [];
+    partes.push(
+      "--" + mixto + "\r\n" +
+      'Content-Type: multipart/related; boundary="' + relacionado + '"; type="text/html"\r\n\r\n' +
+      "--" + relacionado + "\r\n" +
+      'Content-Type: text/html; charset="UTF-8"\r\n' +
       "Content-Transfer-Encoding: base64\r\n\r\n" +
-      cortar76(base64(enc.encode(cuerpo)));
-
-    if (!conAdjunto || !oficio.bytes) return encabezados.join("\r\n") + "\r\n" + parteTexto;
-
-    encabezados.push('Content-Type: multipart/mixed; boundary="' + limite + '"');
-    return encabezados.join("\r\n") + "\r\n\r\n" +
-      "--" + limite + "\r\n" + parteTexto + "\r\n" +
-      "--" + limite + "\r\n" +
-      "Content-Type: " + (TIPOS[oficio.ext] || "application/octet-stream") + "; name=" + nombreAdjunto(oficio.nombre) + "\r\n" +
-      "Content-Transfer-Encoding: base64\r\n" +
-      "Content-Disposition: attachment; filename=" + nombreAdjunto(oficio.nombre) + "\r\n\r\n" +
-      cortar76(base64(oficio.bytes)) + "\r\n" +
-      "--" + limite + "--\r\n";
+      cortar76(base64(enc.encode(O.documentoHtml(o.html)))) +
+      o.imagenes.map(function (im) {
+        return "--" + relacionado + "\r\n" +
+          "Content-Type: " + im.tipo + "; name=" + nombreArchivo(im.nombre) + "\r\n" +
+          "Content-Transfer-Encoding: base64\r\n" +
+          "Content-ID: <" + im.cid + ">\r\n" +
+          "Content-Disposition: inline; filename=" + nombreArchivo(im.nombre) + "\r\n\r\n" +
+          cortar76(base64(im.bytes));
+      }).join("") +
+      "--" + relacionado + "--\r\n"
+    );
+    if (o.pdf) {
+      partes.push(
+        "--" + mixto + "\r\n" +
+        "Content-Type: application/pdf; name=" + nombreArchivo(o.pdf.nombre) + "\r\n" +
+        "Content-Transfer-Encoding: base64\r\n" +
+        "Content-Disposition: attachment; filename=" + nombreArchivo(o.pdf.nombre) + "\r\n\r\n" +
+        cortar76(base64(o.pdf.bytes))
+      );
+    }
+    return enc1.join("\r\n") + "\r\n\r\n" + partes.join("") + "--" + mixto + "--\r\n";
   };
 
-  /** Nombre de archivo seguro para Windows. */
-  O.nombreSeguro = function (s) {
-    return s.replace(/\.[^.]+$/, "")
-            .replace(/[\\/:*?"<>|]+/g, " ")
-            .replace(/\s+/g, " ")
-            .trim()
-            .slice(0, 90) || "oficio";
-  };
-
-  /** Nombre del .eml: radicado + nombre del archivo. */
-  O.nombreEml = function (oficio) {
-    return (oficio.radicado ? oficio.radicado + " - " : "") + O.nombreSeguro(oficio.nombre);
+  /** Nombre del .eml: MUNICIPIO (y radicado si lo tiene). */
+  O.nombreEml = function (o) {
+    var base = (o.radicado ? o.radicado + " - " : "") + (o.municipio || o.nombre.replace(/\.[^.]+$/, ""));
+    return base.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 90) || "oficio";
   };
 
   /** Listado en .csv (separado por ; para Excel en español). */
-  O.armarCsv = function (oficios, estadoDe) {
+  O.armarCsv = function (filas) {
     var q = function (s) { return '"' + String(s || "").replace(/"/g, '""') + '"'; };
-    var filas = [["Radicado", "Archivo", "Para", "Asunto", "Estado"].join(";")];
-    oficios.forEach(function (o) {
-      filas.push([q(o.radicado), q(o.nombre), q(o.para), q(o.asunto), q(estadoDe(o).texto)].join(";"));
-    });
-    return "﻿" + filas.join("\r\n");
+    var cab = ["Municipio", "Word", "PDF", "Para", "CC", "Asunto", "Estado"];
+    return "﻿" + [cab.join(";")].concat(filas.map(function (f) { return f.map(q).join(";"); })).join("\r\n");
   };
 
   /** Descarga un archivo desde el navegador. */

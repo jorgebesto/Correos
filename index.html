@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Oficios a Outlook</title>
-  <meta name="description" content="Lee oficios en Word o PDF, extrae destinatarios, asunto y texto, y genera un correo listo por oficio para abrir en Outlook.">
+  <meta name="description" content="Convierte los oficios de Cambio de Subtipo (Word + PDF) en correos listos para enviar desde Outlook.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@500&display=swap">
@@ -14,60 +14,66 @@
   <div class="wrap">
     <header>
       <h1>Oficios a Outlook</h1>
-      <p class="lead">Carga tus oficios y la página saca los correos de destino, el asunto y el texto completo de cada uno. Te entrega un correo listo por oficio para abrir en Outlook y darle Enviar.</p>
+      <p class="lead">Carga el Word y el PDF de cada oficio. La página copia el cuerpo del Word con su formato, desde "Bogotá D.C." hasta la firma, y arma un correo por municipio con el PDF adjunto, listo para abrir en Outlook y darle Enviar.</p>
     </header>
 
     <ol class="steps">
-      <li><b>Carga los oficios</b><span>Word (.docx), PDF con texto o .txt. Puedes subir varios a la vez.</span></li>
-      <li><b>Revisa cada ficha</b><span>Para, asunto y cuerpo se pueden corregir antes de descargar.</span></li>
+      <li><b>Carga Word y PDF</b><span>Todos juntos. Se emparejan por el nombre del municipio en el nombre del archivo.</span></li>
+      <li><b>Revisa lo pendiente</b><span>Lo que no se pudo relacionar aparece primero para que lo completes a mano.</span></li>
       <li><b>Descarga y envía</b><span>Abre cada correo en Outlook y dale Enviar.</span></li>
     </ol>
 
-    <div class="drop" id="drop" tabindex="0" role="button" aria-label="Cargar oficios">
-      <strong>Arrastra aquí los oficios o haz clic para elegirlos</strong>
-      <small>.docx · .pdf · .txt — los archivos se leen en tu navegador, no se suben a ningún servidor</small>
-      <input type="file" id="file" accept=".docx,.pdf,.txt" multiple hidden>
-    </div>
-
-    <div class="settings">
-      <div class="field">
-        <label for="exclude">No enviar a (tu propio correo o dominio)</label>
-        <input type="text" id="exclude" class="mono" placeholder="ej. @tuentidad.gov.co, radicacion@tuentidad.gov.co">
-      </div>
-      <label class="check" for="attach"><input type="checkbox" id="attach" checked> Adjuntar el oficio original a cada correo</label>
+    <div class="drop" id="drop" tabindex="0" role="button" aria-label="Cargar oficios en Word y PDF">
+      <strong>Arrastra aquí los Word y los PDF, o haz clic para elegirlos</strong>
+      <small>.docx para el cuerpo del correo · .pdf para el adjunto — se leen en tu navegador, no se suben a ningún servidor</small>
+      <input type="file" id="file" accept=".docx,.pdf" multiple hidden>
     </div>
 
     <div class="bar">
       <div class="count" id="count"></div>
       <div class="btns">
         <button id="btnCsv" type="button">Listado (.csv)</button>
-        <button id="btnZip" type="button" class="primary">Descargar correos (.zip)</button>
+        <button id="btnZip" type="button" class="primary">Descargar correos listos (.zip)</button>
       </div>
     </div>
     <p class="msg" id="msg" hidden></p>
 
-    <div class="list" id="list"></div>
+    <div class="empty" id="vacio">
+      Todavía no hay archivos. Cuando cargues los oficios verás aquí, primero, los que hay que revisar a mano y después los correos listos.
+    </div>
+
+    <section id="seccionManual" class="seccion manual" hidden>
+      <h2 id="tituloManual">Para revisar a mano</h2>
+      <p class="note">Estos no se incluyen en el .zip hasta que los completes. Puedes elegir el PDF, escribir el municipio o el correo de la alcaldía.</p>
+      <div class="list" id="listaManual"></div>
+      <div id="pdfsSueltos" class="sueltos" hidden>
+        <h3>PDF que no se pudieron relacionar con ningún Word</h3>
+        <ul id="listaPdfs"></ul>
+      </div>
+    </section>
+
+    <section id="seccionListos" class="seccion" hidden>
+      <h2 id="tituloListos">Listos para enviar</h2>
+      <div class="list" id="listaListos"></div>
+    </section>
 
     <details class="help">
       <summary>Cómo abrir los correos en Outlook</summary>
       <ol>
-        <li>Descomprime el .zip. Queda un archivo <span class="mono">.eml</span> por oficio.</li>
-        <li>Haz doble clic en cada uno. Outlook de escritorio lo abre como correo nuevo, con destinatarios, asunto, cuerpo y el oficio adjunto.</li>
+        <li>Descomprime el .zip. Queda un archivo <span class="mono">.eml</span> por municipio.</li>
+        <li>Haz doble clic en cada uno. Outlook de escritorio lo abre como correo nuevo: Para (alcaldía), CC (SAE), asunto, cuerpo con formato y el PDF adjunto.</li>
         <li>Revísalo y dale <b>Enviar</b>. Sale desde tu cuenta institucional.</li>
-        <li>Si usas Outlook en el navegador (outlook.office.com), usa los botones <b>Copiar</b> de cada ficha y pega en un correo nuevo.</li>
+        <li>Si usas Outlook en el navegador, usa los botones <b>Copiar</b> y <b>Copiar cuerpo con formato</b>, y adjunta el PDF a mano.</li>
       </ol>
     </details>
   </div>
 
-  <!-- Librerías externas -->
-  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+  <!-- Librería externa (leer el Word y armar el .zip) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
   <!-- Código propio (el orden importa) -->
+  <script src="js/docx-html.js"></script>
   <script src="js/extraer.js"></script>
-  <script src="js/lectores.js"></script>
   <script src="js/eml.js"></script>
   <script src="js/app.js"></script>
 </body>
