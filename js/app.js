@@ -294,22 +294,35 @@
     O.descargar("listado-oficios.csv", O.armarCsv(filas), "text/csv;charset=utf-8");
   });
 
-  /* ---------- Zona de carga ---------- */
+  /* ---------- Carga: botón nativo y arrastrar a cualquier parte de la página ---------- */
   var zona = $("drop"), entrada = $("file");
-  zona.addEventListener("click", function () { entrada.click(); });
-  zona.addEventListener("keydown", function (e) {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); entrada.click(); }
-  });
-  entrada.addEventListener("change", function () { agregarArchivos(entrada.files); entrada.value = ""; });
-  ["dragenter", "dragover"].forEach(function (ev) {
-    zona.addEventListener(ev, function (e) { e.preventDefault(); zona.classList.add("over"); });
-  });
-  ["dragleave", "drop"].forEach(function (ev) {
-    zona.addEventListener(ev, function (e) { e.preventDefault(); zona.classList.remove("over"); });
-  });
-  zona.addEventListener("drop", function (e) {
-    if (e.dataTransfer && e.dataTransfer.files) agregarArchivos(e.dataTransfer.files);
+
+  function cargarSeguro(lista) {
+    var copia = [].slice.call(lista || []);
+    if (!copia.length) return;
+    agregarArchivos(copia).catch(function (e) {
+      mensaje("No se pudieron leer los archivos: " + (e && e.message ? e.message : e), "err");
+    });
+  }
+
+  entrada.addEventListener("change", function () {
+    var lista = [].slice.call(entrada.files || []);
+    entrada.value = "";
+    cargarSeguro(lista);
   });
 
+  // Evita que el navegador abra el archivo si se suelta fuera del recuadro.
+  var arrastres = 0;
+  window.addEventListener("dragenter", function (e) { e.preventDefault(); arrastres++; zona.classList.add("over"); });
+  window.addEventListener("dragover", function (e) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = "copy"; });
+  window.addEventListener("dragleave", function () { if (--arrastres <= 0) { arrastres = 0; zona.classList.remove("over"); } });
+  window.addEventListener("drop", function (e) {
+    e.preventDefault();
+    arrastres = 0;
+    zona.classList.remove("over");
+    if (e.dataTransfer && e.dataTransfer.files) cargarSeguro(e.dataTransfer.files);
+  });
+
+  O.listo = true;
   pintar();
 })(window.Oficios);

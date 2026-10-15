@@ -30,17 +30,21 @@ js/docx-html.js     Lee el Word y lo pasa a HTML con su formato
 js/extraer.js       Reglas del oficio: rango del cuerpo, Para, CC, asunto, municipio, emparejar con el PDF
 js/eml.js           Arma los correos .eml, el listado .csv y las descargas
 js/app.js           Interfaz: carga, fichas, revisión manual y botones
+vendor/jszip.min.js Librería JSZip 3.10.1 (MIT) para leer el Word y armar el .zip
 ```
 
 ## Publicar en GitHub Pages
 
 1. Crea un repositorio nuevo en GitHub (por ejemplo `oficios-outlook`).
-2. Sube todo el contenido de esta carpeta. `index.html` debe quedar en la raíz del repositorio.
+2. Entra a **Add file → Upload files** y **arrastra** el contenido de esta carpeta (`index.html` y las carpetas `css`, `js` y `vendor`). Si eliges los archivos con el botón en vez de arrastrarlos, GitHub no sube las carpetas y la página no funciona.
+   Al terminar, en el repositorio deben verse `index.html`, `README.md` y las carpetas `css`, `js` y `vendor`.
 3. En el repositorio entra a **Settings → Pages**.
 4. En **Source** elige **Deploy from a branch**, rama **main**, carpeta **/ (root)** y guarda.
 5. En uno o dos minutos la página queda en `https://TU-USUARIO.github.io/oficios-outlook/`.
 
-También funciona abriendo `index.html` con doble clic (necesita internet para cargar la librería JSZip).
+También funciona abriendo `index.html` con doble clic, sin internet.
+
+Si la página muestra un aviso rojo diciendo que no cargó completa, falta alguna de las carpetas `js` o `vendor`.
 
 ## Uso
 

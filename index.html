@@ -23,11 +23,14 @@
       <li><b>Descarga y envía</b><span>Abre cada correo en Outlook y dale Enviar.</span></li>
     </ol>
 
-    <div class="drop" id="drop" tabindex="0" role="button" aria-label="Cargar oficios en Word y PDF">
+    <p class="msg err" id="errorCarga" hidden></p>
+
+    <label class="drop" id="drop" for="file">
       <strong>Arrastra aquí los Word y los PDF, o haz clic para elegirlos</strong>
       <small>.docx para el cuerpo del correo · .pdf para el adjunto — se leen en tu navegador, no se suben a ningún servidor</small>
-      <input type="file" id="file" accept=".docx,.pdf" multiple hidden>
-    </div>
+      <span class="boton-falso">Elegir archivos</span>
+    </label>
+    <input type="file" id="file" class="oculto" accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple>
 
     <div class="bar">
       <div class="count" id="count"></div>
@@ -68,13 +71,31 @@
     </details>
   </div>
 
-  <!-- Librería externa (leer el Word y armar el .zip) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <!-- Librería para leer el Word y armar el .zip (incluida en el proyecto, no depende de internet) -->
+  <script src="vendor/jszip.min.js"></script>
 
   <!-- Código propio (el orden importa) -->
   <script src="js/docx-html.js"></script>
   <script src="js/extraer.js"></script>
   <script src="js/eml.js"></script>
   <script src="js/app.js"></script>
+
+  <!-- Aviso si algún archivo del proyecto no cargó (por ejemplo, si no se subieron las carpetas js o vendor) -->
+  <script>
+    (function () {
+      var O = window.Oficios || {}, faltan = [];
+      if (!window.JSZip) faltan.push("vendor/jszip.min.js");
+      if (!O.leerDocx) faltan.push("js/docx-html.js");
+      if (!O.analizarOficio) faltan.push("js/extraer.js");
+      if (!O.armarEml) faltan.push("js/eml.js");
+      if (!O.listo) faltan.push("js/app.js");
+      if (faltan.length) {
+        var e = document.getElementById("errorCarga");
+        e.textContent = "La página no cargó completa y no va a poder leer archivos. No se encontraron: " + faltan.join(", ") +
+          ". Revisa que en el repositorio estén las carpetas css, js y vendor con sus archivos, no solo index.html.";
+        e.hidden = false;
+      }
+    })();
+  </script>
 </body>
 </html>
